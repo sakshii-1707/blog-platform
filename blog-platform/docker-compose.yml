@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  user-mongo:
+    image: mongo:5
+    container_name: user-mongo
+    ports:
+      - '27017:27017'
+    networks:
+      - backend
+    volumes:
+      - user-mongo-data:/data/db
+
+  user-service:
+    build: ./user-service
+    container_name: user-service
+    restart: unless-stopped
+    depends_on:
+      - user-mongo
+    environment:
+      - MONGO_URL=mongodb://user-mongo:27017/users
+      - JWT_SECRET=supersecret
+    ports:
+      - '4001:4001'
+    networks:
+      - backend
+
+  post-mongo:
+    image: mongo:5
+    container_name: post-mongo
+    ports:
+      - '27018:27017'
+    networks:
+      - backend
+    volumes:
+      - post-mongo-data:/data/db
+
+  post-service:
+    build: ./post-service
+    container_name: post-service
+    restart: unless-stopped
+    depends_on:
+      - post-mongo
+    environment:
+      - MONGO_URL=mongodb://post-mongo:27017/posts
+    ports:
+      - '4002:4002'
+    networks:
+      - backend
+
+  comment-mongo:
+    image: mongo:5
+    container_name: comment-mongo
+    ports:
+      - '27019:27017'
+    networks:
+      - backend
+    volumes:
+      - comment-mongo-data:/data/db
+
+  comment-service:
+    build: ./comment-service
+    container_name: comment-service
+    restart: unless-stopped
+    depends_on:
+      - comment-mongo
+    environment:
+      - MONGO_URL=mongodb://comment-mongo:27017/comments
+    ports:
+      - '4003:4003'
+    networks:
+      - backend
+
+  api-gateway:
+    build: ./api-gateway
+    container_name: api-gateway
+    restart: unless-stopped
+    depends_on:
+      - user-service
+      - post-service
+      - comment-service
+    environment:
+      - USER_SERVICE_URL=http://user-service:4001
+      - POST_SERVICE_URL=http://post-service:4002
+      - COMMENT_SERVICE_URL=http://comment-service:4003
+      - JWT_SECRET=supersecret
+    ports:
+      - '8080:8080'
+    networks:
+      - backend
+      - frontend
+
+  frontend:
+    build: ./frontend
+    container_name: blog-frontend
+    restart: unless-stopped
+    depends_on:
+      - api-gateway
+    ports:
+      - '3000:3000'
+    networks:
+      - frontend
+
+volumes:
+  user-mongo-data:
+  post-mongo-data:
+  comment-mongo-data:
+
+networks:
+  backend:
+  frontend:
