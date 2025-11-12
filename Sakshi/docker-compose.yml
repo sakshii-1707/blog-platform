@@ -1,0 +1,152 @@
+version: '3.9'
+
+name: blogging-platform
+
+services:
+  gateway:
+    build: ./gateway
+    container_name: api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=development
+      - PORT=8080
+      - JWT_PUBLIC_KEY=${JWT_PUBLIC_KEY}
+      - DEV_JWT_SECRET=${DEV_JWT_SECRET:-dev-secret}
+      - RATE_LIMIT_WINDOW_MS=60000
+      - RATE_LIMIT_MAX=100
+      - USER_SERVICE_URL=http://user-service:3001
+      - POST_SERVICE_URL=http://post-service:3002
+      - COMMENT_SERVICE_URL=http://comment-service:3003
+      - LOG_LEVEL=info
+    depends_on:
+      - user-service
+      - post-service
+      - comment-service
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
+
+  user-service:
+    build: ./services/user-service
+    container_name: user-service
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - MONGO_URL=mongodb://user-mongo:27017/users
+      - JWT_PRIVATE_KEY=${JWT_PRIVATE_KEY}
+      - JWT_PUBLIC_KEY=${JWT_PUBLIC_KEY}
+      - DEV_JWT_SECRET=${DEV_JWT_SECRET:-dev-secret}
+      - LOG_LEVEL=info
+      - SERVICE_NAME=user-service
+    depends_on:
+      - user-mongo
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
+
+  post-service:
+    build: ./services/post-service
+    container_name: post-service
+    environment:
+      - NODE_ENV=development
+      - PORT=3002
+      - MONGO_URL=mongodb://post-mongo:27017/posts
+      - LOG_LEVEL=info
+      - SERVICE_NAME=post-service
+      - USER_SERVICE_URL=http://user-service:3001
+      - GATEWAY_INTERNAL_URL=http://gateway:8080
+      - JWT_PUBLIC_KEY=${JWT_PUBLIC_KEY}
+    depends_on:
+      - post-mongo
+      - user-service
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3002/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
+
+  comment-service:
+    build: ./services/comment-service
+    container_name: comment-service
+    environment:
+      - NODE_ENV=development
+      - PORT=3003
+      - MONGO_URL=mongodb://comment-mongo:27017/comments
+      - LOG_LEVEL=info
+      - SERVICE_NAME=comment-service
+      - POST_SERVICE_URL=http://post-service:3002
+      - JWT_PUBLIC_KEY=${JWT_PUBLIC_KEY}
+    depends_on:
+      - comment-mongo
+      - post-service
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3003/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
+
+  user-mongo:
+    image: mongo:7
+    container_name: user-mongo
+    ports:
+      - "27018:27017"
+    volumes:
+      - user-mongo-data:/data/db
+    networks:
+      - backend
+
+  post-mongo:
+    image: mongo:7
+    container_name: post-mongo
+    ports:
+      - "27019:27017"
+    volumes:
+      - post-mongo-data:/data/db
+    networks:
+      - backend
+
+  comment-mongo:
+    image: mongo:7
+    container_name: comment-mongo
+    ports:
+      - "27020:27017"
+    volumes:
+      - comment-mongo-data:/data/db
+    networks:
+      - backend
+
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE=http://localhost:8080/api/v1
+    depends_on:
+      - gateway
+    networks:
+      - backend
+
+volumes:
+  user-mongo-data:
+  post-mongo-data:
+  comment-mongo-data:
+
+networks:
+  backend:
+    driver: bridge
+
+
